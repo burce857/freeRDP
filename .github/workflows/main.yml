@@ -114,8 +114,26 @@ jobs:
                 -Force
 
               git add rdp-backup.zip
-              git commit -m "Hourly RDP backup $i" || Write-Host "No changes to commit"
-              git push origin main || Write-Host "Git push failed"
+
+              $status = git status --porcelain
+
+              if ($status) {
+                  git commit -m "Hourly RDP backup $i"
+
+                  if ($LASTEXITCODE -eq 0) {
+                      git push origin main
+
+                      if ($LASTEXITCODE -eq 0) {
+                          Write-Host "Backup uploaded successfully."
+                      } else {
+                          Write-Host "Git push failed."
+                      }
+                  } else {
+                      Write-Host "Git commit failed."
+                  }
+              } else {
+                  Write-Host "No changes to commit."
+              }
 
               Start-Sleep -Seconds 3600
           }
