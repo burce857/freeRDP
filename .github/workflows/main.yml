@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   secure-rdp:
-    runs-on: windows-2019
+    runs-on: windows-2020
     timeout-minutes: 3600
 
     steps:
