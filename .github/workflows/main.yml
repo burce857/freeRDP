@@ -46,8 +46,23 @@ jobs:
       - name: Create RDP User
         shell: powershell
         run: |
-          $password = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 16 | ForEach-Object {[char]$_})
+          $upper = [char](Get-Random -InputObject (65..90))
+          $lower = [char](Get-Random -InputObject (97..122))
+          $number = [char](Get-Random -InputObject (48..57))
+
+          $specialChars = "!@#$%^&*_-+="
+          $special = $specialChars[(Get-Random -Minimum 0 -Maximum $specialChars.Length)]
+
+          $allChars = (65..90) + (97..122) + (48..57) + (33,35,36,37,38,42,43,45,61,64,94,95)
+          $rest = -join ($allChars | Get-Random -Count 12 | ForEach-Object {[char]$_})
+
+          $password = -join (($upper + $lower + $number + $special + $rest).ToCharArray() | Get-Random -Count 16)
+
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+          if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
+              Remove-LocalUser -Name "RDP"
+          }
 
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
