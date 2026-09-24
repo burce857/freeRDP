@@ -1,0 +1,94 @@
+name: Ubuntu SSH
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ssh-server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Install SSH Server
+        run: |
+          sudo apt update
+          sudo apt install -y openssh-server
+
+          sudo systemctl enable ssh
+          sudo systemctl start ssh
+
+      - name: Create SSH User
+        run: |
+          PASSWORD=$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9@#%+=_' | head -c 16)
+
+          sudo useradd -m -s /bin/bash sshuser || true
+
+          echo "sshuser:$PASSWORD" | sudo chpasswd
+
+          sudo usermod -aG sudo sshuser
+
+          echo "sshuser ALL=(ALL) NOPASSWD:ALL" | \
+            sudo tee /etc/sudoers.d/sshuser
+
+          sudo chmod 440 /etc/sudoers.d/sshuser
+
+          echo "SSH_PASSWORD=$PASSWORD" >> $GITHUB_ENV
+
+      - name: Enable Password SSH Login
+        run: |
+          sudo sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sudo sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+          sudo sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+
+          echo "PasswordAuthentication yes" | sudo tee /etc/ssh/sshd_config.d/password.conf
+
+          sudo sshd -t
+          sudo systemctl restart ssh
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Connect Tailscale
+        run: |
+          sudo tailscale up \
+            --authkey="${{ secrets.TAILSCALE_AUTH_KEY }}" \
+            --hostname="gh-ssh-${GITHUB_RUN_ID}"
+
+          sleep 10
+
+          TS_IP=$(tailscale ip -4 | head -n 1)
+
+          if [ -z "$TS_IP" ]; then
+            echo "Tailscale IP not assigned"
+            exit 1
+          fi
+
+          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+
+      - name: Show SSH Info
+        run: |
+          echo "===================================="
+          echo "SSH Server Ready"
+          echo ""
+          echo "IP: $TAILSCALE_IP"
+          echo "Username: sshuser"
+          echo "Password: $SSH_PASSWORD"
+          echo ""
+          echo "Connect with:"
+          echo "ssh sshuser@$TAILSCALE_IP"
+          echo "===================================="
+
+      - name: Keep SSH Alive
+        run: |
+          for i in $(seq 1 360); do
+            echo "[$(date)] SSH server running..."
+            sleep 60
+          done
